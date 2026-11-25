@@ -9,6 +9,7 @@ mod tests;
 mod upstream;
 mod view;
 
+use super::launch::cargo_subcommand_at;
 use eyre::{Context, Result};
 use mbx_cache_core::AgentStats;
 use model::{Model, strip_ansi};
@@ -73,12 +74,15 @@ fn eligible(arguments: &[String]) -> bool {
         })
 }
 
+/// Request JSON diagnostics right after the subcommand. Cargo hands everything
+/// from the first positional argument of `cargo run` to the program, with or
+/// without a `--`, so an option placed any later could reach the program.
 fn cargo_arguments(arguments: &[String]) -> Vec<String> {
     let mut result = arguments.to_vec();
-    let index = result
-        .iter()
-        .position(|arg| arg == "--")
-        .unwrap_or(result.len());
+    let index = match cargo_subcommand_at(arguments) {
+        Some((subcommand, _)) => subcommand + 1,
+        None => arguments.len(),
+    };
     result.insert(
         index,
         "--message-format=json,json-diagnostic-rendered-ansi".into(),

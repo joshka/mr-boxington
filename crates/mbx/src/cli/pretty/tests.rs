@@ -118,8 +118,8 @@ fn argument_injection_preserves_command_and_program_arguments() {
         cargo_arguments(&args),
         [
             "run",
-            "--bin=server",
             "--message-format=json,json-diagnostic-rendered-ansi",
+            "--bin=server",
             "--",
             "--message-format=custom"
         ]
@@ -156,6 +156,50 @@ fn argument_injection_preserves_command_and_program_arguments() {
             &args.iter().map(|s| s.to_string()).collect::<Vec<_>>()
         ));
     }
+}
+
+/// Cargo treats everything from the first positional argument of `cargo run` as
+/// the program's, so display options must come before it.
+#[test]
+fn argument_injection_precedes_positional_program_arguments() {
+    let inject = |command: &str| {
+        let arguments: Vec<String> = command.split(' ').map(Into::into).collect();
+        cargo_arguments(&arguments)
+            .join(" ")
+            .replace("--message-format=json,json-diagnostic-rendered-ansi", "FMT")
+    };
+
+    // Without `--`.
+    assert_eq!(inject("run foo"), "run FMT foo");
+    assert_eq!(inject("run foo --custom"), "run FMT foo --custom");
+    assert_eq!(inject("run foo --bin other"), "run FMT foo --bin other");
+    assert_eq!(inject("run --bin app foo"), "run FMT --bin app foo");
+    assert_eq!(
+        inject("+stable --config a='run' r --bin app foo"),
+        "+stable --config a='run' r FMT --bin app foo"
+    );
+
+    // With `--` before the program's arguments.
+    assert_eq!(inject("run -- foo"), "run FMT -- foo");
+    assert_eq!(inject("run -- --custom"), "run FMT -- --custom");
+    assert_eq!(
+        inject("run --bin app -- --bin other"),
+        "run FMT --bin app -- --bin other"
+    );
+
+    // With a `--` that belongs to the program.
+    assert_eq!(inject("run foo -- bar"), "run FMT foo -- bar");
+    assert_eq!(
+        inject("run --bin app foo -- --custom"),
+        "run FMT --bin app foo -- --custom"
+    );
+
+    // With both.
+    assert_eq!(inject("run -- foo -- bar"), "run FMT -- foo -- bar");
+    assert_eq!(
+        inject("run --bin app -- foo -- --custom"),
+        "run FMT --bin app -- foo -- --custom"
+    );
 }
 
 #[test]
